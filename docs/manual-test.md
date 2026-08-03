@@ -1,0 +1,80 @@
+# 拡張の手動確認チェックリスト
+
+ブラウザでしか確かめられないこと (描画・フレーム・ちらつき・ポップアップの疎通)
+を確認するための一覧。判定そのものは `node --test test/` と
+`docs/manual-test.md` 記載の期待値で担保している。
+
+## 拡張を ON/OFF して比べる
+
+`chrome://extensions` のトグルを毎回操作せずに済ませるなら、シークレット
+ウィンドウを使う。未パッケージ拡張はシークレットでは既定で無効なので、
+
+- 通常ウィンドウ = 拡張 **ON**
+- シークレットウィンドウ (⌘⇧N) = 拡張 **OFF**
+
+同じ URL を両方で開けば横に並べて比較できる。拡張の詳細画面にある
+「シークレット モードでの実行を許可する」を ON にするとこの手が使えなくなるので、
+OFF のままにしておくこと。
+
+Firefox は `about:debugging` から読み込み/削除で切り替える (プライベート
+ウィンドウでの扱いはアドオンごとの設定に従う)。
+
+## 見るべき点
+
+各ページで次を確認する。
+
+1. タブのタイトルと本文が日本語として読めること
+2. Wayback のツールバー (上部のカレンダー等) が壊れていないこと
+3. 開発者ツールのコンソールにエラーが出ていないこと
+4. ツールバーのアイコンからポップアップを開き、期待どおりの表示になること
+   - `変換しました: <文字コード>` — 差し替えを実行した
+   - `変換は不要でした` — 判定はしたがブラウザの解釈と一致していた
+   - `このページに直すところはありません` — 介入対象のフレームが無かった
+
+## 直るべきページ
+
+拡張 OFF で化けており、ON で読めるようになること。判定結果は実測値。
+
+| # | ページ | 判定 | OFF (化けた状態) | ON (読める状態) |
+| --- | --- | --- | --- | --- |
+| 1 | [tbs.co.jp 2000](https://web.archive.org/web/20001212075700/http://www.tbs.co.jp/tengoku/index-j2.html) | `shift_jis` (hint) | `“V‘‚Éˆê”Ô‹ß‚¢’j` | 天国に一番近い男 |
+| 2 | [geocities.jp 2007](https://web.archive.org/web/20070825113202/http://www.geocities.jp/burontosan/) | `euc-jp` (hint) | `¥Ö¥í¥ó¥È¤µ¤óÌ¾¸À½¸` | ブロントさん名言集 |
+| 3 | [fctv.ne.jp 2000](https://web.archive.org/web/20000929071705/http://www1.fctv.ne.jp/~shimazu/) | `shift_jis` (meta) | `‚±‚±‚Í‹£”nƒjƒ…[ƒX…` | ここは競馬ニュースセンターです |
+| 4 | [asahi-net.or.jp 2001](https://web.archive.org/web/20010517021236/http://www.asahi-net.or.jp/~wj3a-fji/) | `shift_jis` (hint) | `w‚ ‚Ûx‚Ìƒz[ƒ€ƒy[ƒW` | 『あぽ』のホームページ |
+| 5 | [biglobe.ne.jp 2000](https://web.archive.org/web/20000925190519/http://www2a.biglobe.ne.jp/~hirapon/) | `shift_jis` (hint) | `‚¿‚á‚è‚Ý‚Á‚­‚·` | ちゃりみっくす |
+| 6 | [2ch.net 2002](https://web.archive.org/web/20020329054553/http://2ch.net/) | `shift_jis` (meta) | `2‚¿‚á‚ñ‚Ë‚é‚Ö‚æ‚¤‚±‚»` | 2ちゃんねるへようこそ |
+
+1 は frameset、3 は 400 KB 近い大きなページ。どちらも `all_frames` と
+差し替えの負荷を見るのに向く。
+
+## 触ってはいけないページ
+
+拡張の ON/OFF で**表示が変わらない**こと。ここが変わる場合は不具合。
+
+| # | ページ | 期待する動作 |
+| --- | --- | --- |
+| 7 | [yahoo.co.jp 2020](https://web.archive.org/web/20201231232740/https://www.yahoo.co.jp/) | UTF-8 なので介入しない |
+| 8 | [naver.com 2003](https://web.archive.org/web/20030124134931/http://naver.com/) | 韓国語。`euc-kr` を正しく宣言しており、ブラウザが正常表示している。判定は `fallback` になり**何もしない** |
+| 9 | [nikkei.co.jp 1998](https://web.archive.org/web/19981212034354/http://www2.nikkei.co.jp/) | 日本語だがタイトルは ASCII。本文が読めること、ツールバーが無事なこと |
+
+8 は特に重要。かなの裏取りを入れる前は、EUC-KR を EUC-JP と誤判定して
+「革戚獄 - 走縦猿走…」という別の誤りに置き換えてしまっていた
+(スコア 0.85 で確信していた)。**正常に表示できているページを壊す**回帰なので、
+ここは必ず確認する。
+
+## 判定が難しいページ
+
+参考。誤っていても「壊した」ことにはならないが、傾向を見るのに使う。
+
+| # | ページ | 実測 |
+| --- | --- | --- |
+| 10 | [yahoo.co.jp 1997](https://web.archive.org/web/19971211142311/http://www.yahoo.co.jp/) | `euc-jp` (heuristic 0.82) |
+| 11 | [chinanews.com.cn 2001](https://web.archive.org/web/20011009000100/http://www.chinanews.com.cn/) | `gbk` (meta)。宣言があるので中国語でも正しく読める |
+
+## 期待値を作り直す
+
+判定ロジックを変えたら、実ページに対する挙動を確認し直す。
+
+```console
+$ node docs/store/build.js   # スクリーンショットの数値も実測値を使っている
+```

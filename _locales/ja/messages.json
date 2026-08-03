@@ -1,0 +1,8 @@
+{
+  "extension_name": {
+    "message": "Wayback 文字化けフィックス"
+  },
+  "extension_description": {
+    "message": "Wayback Machine に残る昔の日本語ページの文字化けを自動で直します。Shift_JIS / EUC-JP / ISO-2022-JP を判定して読めるようにします。"
+  }
+}

@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # TextDecoder の Shift_JIS / EUC-JP には full-icu ビルドが要る (公式ビルドは全て該当)
+          node-version: '20'
+
+      - name: manifest の JSON を検証
+        run: |
+          for f in manifest.json _locales/*/messages.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" || exit 1
+            echo "ok $f"
+          done
+
+      # 判定ロジックはブラウザ API しか使わないので Node からそのまま検証できる
+      - name: 判定ロジックのテスト
+        run: node --test test/
+
+      - name: 配布用 zip が作れることを確認
+        run: ./package.sh

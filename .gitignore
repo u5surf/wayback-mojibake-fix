@@ -1,0 +1,7 @@
+# 配布用パッケージ (package.sh)
+/wayback-mojibake-fix.zip
+
+# スクリーンショット生成の中間ファイル
+docs/store/.tmp/
+
+.DS_Store

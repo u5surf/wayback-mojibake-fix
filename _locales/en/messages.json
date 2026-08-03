@@ -1,0 +1,8 @@
+{
+  "extension_name": {
+    "message": "Wayback Mojibake Fix"
+  },
+  "extension_description": {
+    "message": "Fixes garbled Japanese pages in the Wayback Machine by detecting Shift_JIS / EUC-JP / ISO-2022-JP and decoding them correctly."
+  }
+}

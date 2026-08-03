@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>Wayback 文字化けフィックス</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <p id="status" class="status">確認中…</p>
+
+    <p class="label">手動で指定</p>
+    <div class="buttons">
+      <button data-enc="">自動判定に戻す</button>
+      <button data-enc="shift_jis">Shift_JIS</button>
+      <button data-enc="euc-jp">EUC-JP</button>
+      <button data-enc="iso-2022-jp">ISO-2022-JP</button>
+      <button data-enc="utf-8">UTF-8</button>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
