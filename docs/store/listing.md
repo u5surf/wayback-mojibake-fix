@@ -114,34 +114,126 @@ https://github.com/u5surf/wayback-mojibake-fix
 
 ### プライバシー関連の申告
 
-審査で必ず聞かれる項目。
+審査で必ず聞かれる項目。**審査担当は日本語話者とは限らないので英語で記入し、
+必要なら日本語を併記する。**
 
-**単一用途 (Single purpose)**
+ホスト権限を要求すると「詳しい審査が必要となり、公開が遅れる可能性があります」
+という警告が出るが、これはホスト権限を持つ拡張すべてに出る定型文であって、
+申請に問題があるという意味ではない。通常 1〜3 週間かかる。
+
+通りやすくするために効くのは次の 3 点。
+
+1. **ソースコードの URL を正当性の説明に書く。** 公開リポジトリなので審査担当が
+   実物を読める。難読化していないことも確認できるため、これが最も効く。
+2. **`<all_urls>` を使っていないことを明示する。** 単一ホストに限定した拡張は
+   審査の分類上かなり軽い。
+3. **説明と実装を一致させる。** 実際に触るのは `*://web.archive.org/web/*` だけ。
+
+#### 単一用途 (Single purpose)
 
 ```
 Wayback Machine 上の、文字コードが宣言されていないアーカイブページの
 文字化けを修正して表示する。これ以外の機能は持たない。
 ```
 
-**権限の正当性**
-
-| 権限 | 説明 |
-| --- | --- |
-| `activeTab` | ツールバーのポップアップを開いたときに、現在のタブへ判定結果を問い合わせ、手動指定を伝えるため。 |
-| `host_permissions: *://web.archive.org/*` | 文字コードを判定する対象が web.archive.org 上のアーカイブページに限られるため。判定にはページのバイト列そのものが必要で、それを取得できるのはこのホストに対する権限だけ。 |
-| リモートコードの使用 | **なし。** すべてのコードは拡張のパッケージに同梱されている。 |
-
-**データの取り扱い**
-
-以下すべて「収集しない」で申告する。
+#### activeTab が必要な理由
 
 ```
-個人情報 / 健康情報 / 金融情報 / 認証情報 / 個人的な通信内容 /
-位置情報 / ウェブ閲覧履歴 / ユーザー活動 / ウェブサイトのコンテンツ
+This extension has a toolbar popup. When the user clicks the toolbar icon,
+the popup needs to communicate with the tab the user is currently viewing in
+order to (a) show which character encoding was detected for that page and
+why, and (b) apply a different encoding if the user chooses one manually
+from the popup.
+
+activeTab grants this access only for the tab the user explicitly interacted
+with, and only at the moment of that interaction. The extension does not use
+it to read tab contents in the background, and it never accesses any other
+tab.
+```
+
+```
+ツールバーのアイコンから開くポップアップが、現在表示中のタブと通信するために
+使用します。用途は 2 つで、(a) そのページで判定された文字コードとその根拠を
+表示すること、(b) 利用者がポップアップから別の文字コードを手動で選んだ場合に
+それを適用することです。
+
+利用者が明示的に操作したタブに対して、その操作の瞬間だけアクセスします。
+バックグラウンドでタブの内容を読むことも、他のタブにアクセスすることも
+ありません。
+```
+
+#### ホスト権限 (`*://web.archive.org/*`) が必要な理由
+
+**「なぜ DOM では駄目なのか」を必ず書くこと。** これが無いと「ページを読むだけ
+なら content script で足りるのでは」と見なされて質問が返ってくる。
+
+```
+The single purpose of this extension is to fix garbled Japanese text on pages
+replayed by the Wayback Machine at web.archive.org. Pages archived around the
+year 2000 declare no character encoding anywhere, and modern browsers no
+longer autodetect encodings, so those pages are decoded with the wrong codec
+and become unreadable.
+
+To determine the correct encoding, the extension must read the page's raw
+bytes. It cannot use the DOM for this: by the time a document exists, the
+browser has already decoded it with the wrong codec and replaced every
+undecodable byte with U+FFFD, which is not reversible. The extension
+therefore re-reads the same URL with fetch(url, {cache: 'force-cache'}) --
+which normally returns from the HTTP cache without a new network request --
+detects the encoding from those bytes, and re-renders the document.
+
+Both the content script and that fetch require host access to
+web.archive.org. The permission is scoped to that one host. The extension
+does not request <all_urls>, does not request any other host, and never runs
+on any other site. All processing happens locally in the browser; no data is
+transmitted anywhere.
+
+Source code: https://github.com/u5surf/wayback-mojibake-fix
+```
+
+```
+この拡張の唯一の機能は、web.archive.org が再生するアーカイブページの日本語の
+文字化けを直すことです。2000 年前後に保存されたページは文字コードをどこにも
+宣言しておらず、現代のブラウザは自動判別をやめたため、誤ったコーデックで
+解釈されて読めなくなります。
+
+正しい文字コードを判定するには、ページの生のバイト列を読む必要があります。
+DOM は使えません。文書が生成された時点でブラウザは既に誤ったコーデックで
+デコードを終えており、解釈できなかったバイトは U+FFFD に置換されていて、
+元に戻せないからです。そのため同じ URL を fetch(url, {cache: 'force-cache'})
+で読み直し (通常は HTTP キャッシュから返るため新たな通信は発生しません)、
+そのバイト列から文字コードを判定して文書を描画し直します。
+
+コンテンツスクリプトとこの fetch の両方に web.archive.org へのホスト権限が
+必要です。権限はこの 1 ホストに限定しており、<all_urls> も他のホストも要求
+せず、他のサイトでは一切動作しません。処理はすべてブラウザ内で完結し、
+外部へのデータ送信はありません。
+
+ソースコード: https://github.com/u5surf/wayback-mojibake-fix
+```
+
+#### リモートコードの使用
+
+**いいえ。** すべてのコードが拡張のパッケージに同梱されている。
+
+#### データの取り扱い
+
+以下 9 項目すべて「収集しない」で申告する。
+
+```
+個人を特定できる情報 / 健康情報 / 金融情報および支払い情報 / 認証情報 /
+個人的な通信内容 / 位置情報 / ウェブ履歴 / ユーザー行動 /
+ウェブサイトのコンテンツ
 
 いずれも収集しない。拡張はいかなるデータも外部へ送信しない。
 文字コードの判定はすべて利用者のブラウザ内で完結する。
 ```
+
+あわせて 3 つの宣言にチェックする。
+
+- データを承認された用途以外に使用しない
+- データを第三者に販売しない
+- データを信用調査や融資目的に使用しない
 
 ---
 
