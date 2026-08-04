@@ -138,6 +138,8 @@ Wayback Machine 上の、文字コードが宣言されていないアーカイ�
 
 #### activeTab が必要な理由
 
+入力欄は 1000 文字以内。以下は 549 文字。
+
 ```
 This extension has a toolbar popup. When the user clicks the toolbar icon,
 the popup needs to communicate with the tab the user is currently viewing in
@@ -167,28 +169,29 @@ tab.
 **「なぜ DOM では駄目なのか」を必ず書くこと。** これが無いと「ページを読むだけ
 なら content script で足りるのでは」と見なされて質問が返ってくる。
 
+入力欄は **1000 文字以内**。以下は 974 文字 (改行を 2 文字と数えられても 991)。
+削るなら 1 段落目から削り、2 段落目の U+FFFD の説明は残すこと。そこが
+ホスト権限を要求する理由そのもので、削ると審査が止まる。
+
 ```
-The single purpose of this extension is to fix garbled Japanese text on pages
-replayed by the Wayback Machine at web.archive.org. Pages archived around the
-year 2000 declare no character encoding anywhere, and modern browsers no
-longer autodetect encodings, so those pages are decoded with the wrong codec
-and become unreadable.
+This extension fixes garbled Japanese text on archived pages at
+web.archive.org. Pages from around 2000 declare no character encoding, and
+modern browsers no longer autodetect, so they are decoded with the wrong
+codec and become unreadable.
 
-To determine the correct encoding, the extension must read the page's raw
-bytes. It cannot use the DOM for this: by the time a document exists, the
-browser has already decoded it with the wrong codec and replaced every
-undecodable byte with U+FFFD, which is not reversible. The extension
-therefore re-reads the same URL with fetch(url, {cache: 'force-cache'}) --
-which normally returns from the HTTP cache without a new network request --
-detects the encoding from those bytes, and re-renders the document.
+Detecting the correct encoding requires the page's raw bytes, and the DOM
+cannot provide them: by the time a document exists, the browser has already
+decoded it with the wrong codec and replaced undecodable bytes with U+FFFD,
+which is not reversible. The extension re-reads the same URL with
+fetch(url, {cache: 'force-cache'}), normally served from the HTTP cache,
+then detects the encoding and re-renders the document.
 
-Both the content script and that fetch require host access to
-web.archive.org. The permission is scoped to that one host. The extension
-does not request <all_urls>, does not request any other host, and never runs
-on any other site. All processing happens locally in the browser; no data is
-transmitted anywhere.
+Both the content script and that fetch need host access to web.archive.org.
+The permission is scoped to that single host; the extension never requests
+<all_urls> or any other host, and never runs elsewhere. All processing is
+local; no data is transmitted.
 
-Source code: https://github.com/u5surf/wayback-mojibake-fix
+Source: https://github.com/u5surf/wayback-mojibake-fix
 ```
 
 ```
