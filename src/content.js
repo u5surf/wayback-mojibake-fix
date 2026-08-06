@@ -1,17 +1,17 @@
-// web.archive.org の再生ページを開いたときに、文字化けしていれば直す。
+// Fixes garbled text on web.archive.org replay pages.
 //
-// 仕組みは単純で、同じ URL をもう一度 fetch して「生バイト列」を手に入れ、
-// 自前で文字コードを判定してデコードし直し、文書を差し替える。
+// The approach is simple: re-fetch the same URL to get the raw bytes, detect
+// the encoding ourselves, decode again, and replace the document.
 //
-// なぜ再取得するのか: ブラウザは charset の無い応答をロケール既定
-// (多くは windows-1252) で解釈済みで、その時点で壊れた文字は U+FFFD に
-// 潰れている。DOM から元のバイト列は復元できないので、取り直すしかない。
-// cache: 'force-cache' を付けているので、通常は HTTP キャッシュから返り、
-// web.archive.org への追加リクエストは発生しない。
+// Why re-fetch: the browser has already decoded a charset-less response with
+// the locale default (usually windows-1252), and any byte it could not decode
+// has collapsed into U+FFFD. The original bytes cannot be recovered from the
+// DOM, so fetching again is the only option. cache: 'force-cache' means this
+// normally comes from the HTTP cache and costs web.archive.org nothing.
 //
-// なぜ id_ を使わないのか: 拡張は web.archive.org 上で動くので、Wayback が
-// 埋め込んだリンク書き換えとツールバーをそのまま活かせる。Go 版のプロキシが
-// id_ を必要としたのはオリジンが変わるからで、ここではその制約が無い。
+// Why not id_: the extension runs on web.archive.org, so Wayback's rewritten
+// links and toolbar keep working as they are. The Go proxy this was ported
+// from needed id_ because it changed the origin; that constraint is gone here.
 
 'use strict';
 
@@ -22,11 +22,11 @@
   const UNHIDE_SAFETY_MS = 4000;
 
   const state = {
-    bytes: null, // 生バイト列。手動指定でのやり直しに使う
-    hint: '', // Wayback の x-archive-guessed-charset
-    result: null, // 直近の判定結果
-    applied: false, // 文書を差し替えたか
-    eligible: false, // このフレームが介入対象か (UTF-8 として妥当なら対象外)
+    bytes: null, // raw bytes, reused when the user picks an encoding by hand
+    hint: '', // Wayback's x-archive-guessed-charset
+    result: null, // most recent detection result
+    applied: false, // whether the document was replaced
+    eligible: false, // is this frame a candidate (valid UTF-8 means no)
   };
 
   if (window.wjpRan) return;
@@ -40,7 +40,7 @@
     hideStyle = document.createElement('style');
     hideStyle.textContent = 'html{visibility:hidden!important}';
     root.appendChild(hideStyle);
-    // 何が起きても最後には必ず見えるようにする
+    // Whatever happens, the page must become visible again in the end.
     setTimeout(unhide, UNHIDE_SAFETY_MS);
   }
 
@@ -51,16 +51,17 @@
     }
   }
 
-  /** HTML 文書以外 (画像・PDF・プレーンテキスト) には触らない。 */
+  /** Never touch anything that is not HTML (images, PDFs, plain text). */
   function isHTMLDocument() {
     const type = (document.contentType || '').toLowerCase();
     return type === '' || type.includes('html');
   }
 
   /**
-   * 文書内の charset 宣言を utf-8 に書き換える。
-   * 差し替え後の文書は既にデコード済みの文字列なので宣言は解釈に影響しないが、
-   * 残しておくと保存やソース表示のときに嘘の情報になる。
+   * Rewrite charset declarations in the document to utf-8.
+   * The replacement document is an already decoded string, so the declaration
+   * no longer affects interpretation, but leaving it would be a lie when the
+   * user saves the page or views its source.
    */
   function rewriteDeclarations(html) {
     return html.replace(
@@ -69,7 +70,7 @@
     );
   }
 
-  /** デコード済みの HTML で文書を丸ごと差し替える。 */
+  /** Replace the whole document with the decoded HTML. */
   function replaceDocument(html) {
     document.open();
     document.write(rewriteDeclarations(html));
@@ -87,7 +88,7 @@
       });
       if (!res.ok) return null;
       const type = (res.headers.get('content-type') || '').toLowerCase();
-      // Content-Type が無いのがまさに今回の症状なので、無い場合も通す。
+      // A missing Content-Type is the very symptom we are fixing, so let it through.
       if (type && !type.includes('html') && !type.includes('text/')) return null;
       state.hint = res.headers.get('x-archive-guessed-charset') || '';
       return new Uint8Array(await res.arrayBuffer());
@@ -105,8 +106,9 @@
       const bytes = await fetchBytes();
       if (!bytes || bytes.length === 0) return;
 
-      // UTF-8 として妥当なフレームは、そもそも化けようがない。
-      // Wayback のツールバーや wrapper がここで除外され、手動指定の巻き添えも防げる。
+      // A frame that is valid UTF-8 cannot be garbled in the first place.
+      // This excludes Wayback's toolbar and wrappers, and keeps a manual
+      // override from hitting them by accident.
       if (wjpValidUTF8(bytes)) return;
 
       state.bytes = bytes;
@@ -115,13 +117,13 @@
       const result = wjpDetect(bytes, state.hint, '');
       state.result = result;
 
-      // 判定できなかったときは何もしない。
-      // 当てずっぽうで差し替えるより、ブラウザの解釈を残すほうが安全で、
-      // 韓国語・ロシア語など日本語以外のページを壊さずに済む。
+      // Do nothing when detection failed. Leaving the browser's interpretation
+      // in place is safer than replacing on a guess, and it keeps non-Japanese
+      // pages (Korean, Russian, ...) intact.
       if (result.reason === 'fallback') return;
 
-      // ブラウザが既に正しく解釈できているなら触らない。
-      // (当時のページでも <meta charset> がある場合はこちらに来る)
+      // Leave pages the browser already reads correctly alone.
+      // (Pages of that era land here when they do carry a <meta charset>.)
       const current = (document.characterSet || '').toLowerCase();
       if (current === result.encoding) return;
 
@@ -131,7 +133,7 @@
     }
   }
 
-  /** ポップアップからの手動指定。判定を無視して指定のコーデックで読み直す。 */
+  /** Manual override from the popup: ignore detection and use the given codec. */
   function applyForced(label) {
     if (!state.bytes) return null;
     const result = wjpDetect(state.bytes, state.hint, label);
@@ -141,8 +143,9 @@
   }
 
   api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    // 介入対象でないフレーム (ツールバー等) は黙る。ポップアップは
-    // 最初に返事をしたフレームだけを見るので、これで本文のフレームが選ばれる。
+    // Frames that are not candidates (the toolbar and friends) stay quiet.
+    // The popup only looks at the first frame that answers, which is how the
+    // content frame gets picked.
     if (!state.eligible) return false;
 
     if (msg.type === 'status') {

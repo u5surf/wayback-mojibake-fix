@@ -1,12 +1,13 @@
-// ポップアップ。判定結果を表示し、外れていたときに手動で指定できるようにする。
+// The popup. Shows the detection result and lets the user override it when
+// detection got it wrong.
 //
-// メッセージは対象タブの全フレームへ届くが、返事をするのは介入対象の
-// フレームだけ (content.js の state.eligible)。最初の返事を採用する。
+// The message reaches every frame of the target tab, but only frames that are
+// candidates answer (content.js state.eligible). The first answer wins.
 
 'use strict';
 
-// Firefox は browser.*、Chrome は chrome.* で Promise を返す。
-// (Firefox の chrome.* はコールバック方式なので、そちらは使わない)
+// Firefox returns promises from browser.*, Chrome from chrome.*.
+// (Firefox's chrome.* is callback-style, so it is not used here.)
 const api = globalThis.browser ?? globalThis.chrome;
 
 const REASONS = {
@@ -65,7 +66,7 @@ async function activeTab() {
 }
 
 function send(tabId, message) {
-  // 応答するフレームが 1 つも無いと reject する。異常ではないので握り潰す。
+  // Rejects when no frame answers at all. That is not an error, so swallow it.
   return api.tabs.sendMessage(tabId, message).catch(() => null);
 }
 

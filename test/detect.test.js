@@ -1,5 +1,5 @@
-// 移植元の Go 実装と同じ判定になることを確かめる。
-// バイト列は golang.org/x/text のエンコーダで生成したもの。
+// Checks that detection matches the Go implementation this was ported from.
+// The byte sequences were generated with the golang.org/x/text encoders.
 
 'use strict';
 
@@ -29,7 +29,7 @@ const bytes = {
                0xa1, 0xbc, 0xa5, 0xb8, 0xa4, 0xd8, 0xa4, 0xe8, 0xa4, 0xa6, 0xa4, 0xb3, 0xa4, 0xbd, 0xa1, 0xa3,
                0xa4, 0xb3, 0xa4, 0xb3, 0xa4, 0xcf, 0xb8, 0xc4, 0xbf, 0xcd, 0xc5, 0xaa, 0xa4, 0xca, 0xb5, 0xad,
                0xcf, 0xbf, 0xa4, 0xce, 0xbe, 0xec, 0xbd, 0xea, 0xa4, 0xc7, 0xa4, 0xb9, 0xa1, 0xa3],
-  // 日本語以外。いずれも「直したつもりで壊す」対象になり得る。
+  // Not Japanese. Each of these could be "fixed" into something broken.
   korean:     [0xb3, 0xd7, 0xc0, 0xcc, 0xb9, 0xf6, 0x20, 0xc1, 0xf6, 0xbd, 0xc4, 0xb1, 0xee, 0xc1, 0xf6, 0x20,
                0xc3, 0xa3, 0xbe, 0xc6, 0xc1, 0xd6, 0xb4, 0xc2, 0x20, 0xb0, 0xcb, 0xbb, 0xf6],
   russian:    [0xf0, 0xd2, 0xc9, 0xd7, 0xc5, 0xd4, 0x20, 0xcd, 0xc9, 0xd2, 0x20, 0xec, 0xc5, 0xce, 0xd4, 0xc1,
@@ -38,7 +38,7 @@ const bytes = {
                0xe2, 0xc1, 0xd9],
 };
 
-/** ASCII 文字列 + バイト列を連結して Uint8Array にする。 */
+/** Concatenate ASCII strings and byte arrays into a Uint8Array. */
 function buf(...parts) {
   const out = [];
   for (const part of parts) {
@@ -100,7 +100,7 @@ test('meta 宣言を裏取りしてから採用する', () => {
     '</body></html>'
   );
   const r = wjpDetect(b, '', '');
-  assert.strictEqual(r.encoding, 'shift_jis'); // x-sjis は WHATWG のラベル表で吸収される
+  assert.strictEqual(r.encoding, 'shift_jis'); // the WHATWG label table absorbs x-sjis
   assert.strictEqual(r.reason, 'meta');
 });
 
@@ -142,9 +142,10 @@ test('ロシア語 (koi8-r) は fallback になる', () => {
   assert.strictEqual(r.reason, 'fallback');
 });
 
-// 回帰: 韓国語ページ (naver 2003) が euc-jp と誤判定されていた。
-// EUC-KR を EUC-JP として読むと漢字が並び、漢字の加点だけでスコア 0.85 に達する。
-// 正しく euc-kr を宣言してブラウザが正常表示できていたページを壊していた。
+// Regression: a Korean page (naver 2003) was misdetected as euc-jp.
+// Reading EUC-KR as EUC-JP yields a run of kanji, and the kanji bonus alone
+// reaches a score of 0.85. It broke a page that correctly declared euc-kr and
+// that the browser was rendering just fine.
 test('韓国語 (euc-kr) を日本語と誤判定しない', () => {
   const b = buf('<html><body>', bytes.korean, '</body></html>');
   const r = wjpDetect(b, '', '');
@@ -153,7 +154,7 @@ test('韓国語 (euc-kr) を日本語と誤判定しない', () => {
     'fallback',
     `かな抜きで採用された: ${JSON.stringify(r)} → ${wjpDecode(b, r.encoding)}`
   );
-  // 漢字としては高得点でも、かなが無いことで退けられる
+  // High-scoring as kanji, but rejected because there is no kana
   assert.ok(wjpScore(wjpDecode(b, 'euc-jp')) > 0.5);
   assert.strictEqual(wjpKanaRatio(wjpDecode(b, 'euc-jp')), 0);
 });
@@ -163,8 +164,8 @@ test('中国語 (gbk) を日本語と誤判定しない', () => {
   assert.strictEqual(wjpDetect(b, '', '').reason, 'fallback');
 });
 
-// 出所のはっきりした宣言は、かなが無くても信用する。
-// 中国語ページが charset を宣言していれば、これまでどおり正しく直る。
+// A declaration with a clear provenance is trusted even without kana.
+// A Chinese page that declares its charset still gets fixed as before.
 test('宣言があれば日本語以外でも従う', () => {
   const b = buf(
     '<html><head><meta charset="gb2312"></head><body>',
@@ -202,7 +203,8 @@ test('当時よく使われたラベルの表記揺れを吸収する', () => {
   assert.strictEqual(wjpCanonical('nonsense-charset'), null);
   assert.strictEqual(wjpCanonical(''), null);
 
-  // WHATWG のラベル表に無い書き方 (実在した) は解決できない。
-  // その場合は宣言を無視して統計スコアに落ちるので、結果的には拾える。
+  // Spellings absent from the WHATWG label table (they did exist) cannot be
+  // resolved. Those fall through to the statistical score, so they still work
+  // out in the end.
   assert.strictEqual(wjpCanonical('eucjp'), null);
 });
