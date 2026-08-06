@@ -86,7 +86,12 @@
         cache: 'force-cache',
         signal: controller.signal,
       });
-      if (!res.ok) return null;
+      // Do not filter on the status code. Wayback replays the status of the
+      // day, so what is archived can be a 404 or a 500 page
+      // (member.nifty.ne.jp/papa-goma/ 2001 is nifty's Japanese error page,
+      // served as 404). The browser renders that body like any other, so the
+      // extension should fix it too. Rejecting here meant state.eligible never
+      // got set, which disabled the manual override as well.
       const type = (res.headers.get('content-type') || '').toLowerCase();
       // A missing Content-Type is the very symptom we are fixing, so let it through.
       if (type && !type.includes('html') && !type.includes('text/')) return null;
@@ -109,7 +114,12 @@
       // A frame that is valid UTF-8 cannot be garbled in the first place.
       // This excludes Wayback's toolbar and wrappers, and keeps a manual
       // override from hitting them by accident.
-      if (wjpValidUTF8(bytes)) return;
+      //
+      // ISO-2022-JP is the exception: every byte is 7-bit, so it comes out
+      // valid as UTF-8 too. Rejecting it here killed not just detection but
+      // the manual override from the popup as well (a frame without
+      // state.eligible stays quiet in onMessage).
+      if (wjpValidUTF8(bytes) && !wjpHasJISEscape(bytes)) return;
 
       state.bytes = bytes;
       state.eligible = true;

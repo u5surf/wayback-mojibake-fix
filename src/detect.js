@@ -45,6 +45,11 @@ const WJP_MIN_KANA_RATIO = 0.05;
 // How far to look for a declaration. Per the HTML spec charset should appear
 // within the first 1024 bytes, but pages of that era sometimes had a long
 // head, so look a little further.
+//
+// This limit does not apply to the escape sequence search. Wayback injects its
+// toolbar at the top of a replay page, so the first ESC of the actual content
+// routinely sits more than 10 KB in (byte 10837 for the 1998 capture of
+// orchid.co.jp/computer/linux/linux.html).
 const WJP_SNIFF_LIMIT = 4096;
 
 // Brute-force candidates. These three are the only ones that come up in
@@ -161,6 +166,23 @@ function wjpKanaRatio(s) {
   return total === 0 ? 0 : kana / total;
 }
 
+/**
+ * Does this contain an ISO-2022-JP kanji escape (`ESC $`)? Scans the whole
+ * document.
+ *
+ * Every byte of ISO-2022-JP is 7-bit, so byte values alone cannot tell it
+ * apart from ASCII and it comes out valid as UTF-8 too. This is essentially
+ * the only exception to "valid UTF-8 means leave it alone".
+ * @param {Uint8Array} bytes
+ * @returns {boolean}
+ */
+function wjpHasJISEscape(bytes) {
+  for (let i = 0; i + 1 < bytes.length; i++) {
+    if (bytes[i] === 0x1b && bytes[i + 1] === 0x24) return true;
+  }
+  return false;
+}
+
 /** Is this valid UTF-8? */
 function wjpValidUTF8(bytes) {
   try {
@@ -199,15 +221,14 @@ function wjpDetect(bytes, hint, forced) {
 
   if (bytes.length === 0) return { encoding: WJP_UTF8, reason: 'empty' };
 
-  // ISO-2022-JP is pinned down uniquely by its escape sequences.
-  const limit = Math.min(bytes.length, WJP_SNIFF_LIMIT);
-  for (let i = 0; i + 1 < limit; i++) {
-    if (bytes[i] === 0x1b && bytes[i + 1] === 0x24) {
-      if (wjpEvaluate(bytes, 'iso-2022-jp') >= WJP_MIN_DECLARED) {
-        return { encoding: 'iso-2022-jp', reason: 'escape-sequence' };
-      }
-      break;
-    }
+  // ISO-2022-JP is pinned down uniquely by its escape sequences. Still verify
+  // by decoding, so a UTF-8 document that happens to contain ESC $ (a page
+  // explaining JIS, say) does not get hijacked.
+  if (
+    wjpHasJISEscape(bytes) &&
+    wjpEvaluate(bytes, 'iso-2022-jp') >= WJP_MIN_DECLARED
+  ) {
+    return { encoding: 'iso-2022-jp', reason: 'escape-sequence' };
   }
 
   // Already valid UTF-8 means leave it alone. Pure ASCII pages exit here too.
@@ -258,5 +279,12 @@ function wjpDetect(bytes, hint, forced) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { wjpDetect, wjpDecode, wjpScore, wjpCanonical, wjpKanaRatio };
+  module.exports = {
+    wjpDetect,
+    wjpDecode,
+    wjpScore,
+    wjpCanonical,
+    wjpKanaRatio,
+    wjpHasJISEscape,
+  };
 }

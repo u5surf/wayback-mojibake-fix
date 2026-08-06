@@ -11,6 +11,7 @@ const {
   wjpScore,
   wjpCanonical,
   wjpKanaRatio,
+  wjpHasJISEscape,
 } = require('../src/detect.js');
 
 const HELLO = 'こんにちは';
@@ -73,6 +74,41 @@ test('ISO-2022-JP はエスケープシーケンスで確定する', () => {
   assert.strictEqual(r.encoding, 'iso-2022-jp');
   assert.strictEqual(r.reason, 'escape-sequence');
   assert.ok(wjpDecode(b, r.encoding).includes(HELLO));
+});
+
+// Regression: Wayback injects its toolbar at the top of a replay page, so the
+// first ESC of the content lands more than 10 KB in. Limiting the escape
+// search to the first 4096 bytes never reached it, and the page sailed through
+// as valid UTF-8 because ISO-2022-JP is 7-bit.
+// (Byte 10837 for the 1998 capture of orchid.co.jp/computer/linux/linux.html.)
+test('ツールバーの後ろにある ISO-2022-JP も見つける', () => {
+  const toolbar = `<!-- ${'wayback '.repeat(1500)} -->`;
+  assert.ok(toolbar.length > 10000);
+  const b = buf(toolbar, '<html><body>', bytes.helloJIS, '</body></html>');
+  const r = wjpDetect(b, '', '');
+  assert.strictEqual(r.encoding, 'iso-2022-jp');
+  assert.strictEqual(r.reason, 'escape-sequence');
+  assert.ok(wjpDecode(b, r.encoding).includes(HELLO));
+});
+
+// Every byte of ISO-2022-JP is 7-bit, so it is valid UTF-8 too. This is the
+// exception content.js needs so "valid UTF-8 means leave it alone" does not
+// reject it.
+test('7bit の ISO-2022-JP は UTF-8 妥当でも検出できる', () => {
+  const b = buf('<html><body>', bytes.helloJIS, '</body></html>');
+  assert.ok(b.every((x) => x < 0x80));
+  assert.ok(wjpHasJISEscape(b));
+  assert.ok(!wjpHasJISEscape(buf('<html><body>hello</body></html>')));
+  assert.ok(!wjpHasJISEscape(buf('<html><body>こんにちは</body></html>')));
+});
+
+// Containing ESC $ is not enough: if decoding does not yield Japanese, do not
+// take it. Keeps pages that discuss JIS in their body intact.
+test('UTF-8 文書に紛れた ESC $ では乗っ取られない', () => {
+  const b = buf('<html><body>ESC $ B の例: \x1b$B です</body></html>');
+  const r = wjpDetect(b, '', '');
+  assert.strictEqual(r.encoding, 'utf-8');
+  assert.strictEqual(r.reason, 'valid-utf8');
 });
 
 test('UTF-8 として妥当ならそのまま', () => {
