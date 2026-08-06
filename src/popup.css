@@ -43,6 +43,51 @@ body {
   font-size: 11px;
 }
 
+/* Conversion on/off. A switch with a knob, so the state reads at a glance. */
+.toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  margin: 0 0 12px;
+}
+
+/* display: flex would beat the UA stylesheet's [hidden] { display: none }. */
+.toggle[hidden] {
+  display: none;
+}
+
+.toggle .switch {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.1s;
+}
+
+.toggle .switch::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.1s, background-color 0.1s;
+}
+
+.toggle[aria-pressed='true'] .switch {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.toggle[aria-pressed='true'] .switch::before {
+  background: var(--bg);
+  transform: translateX(12px);
+}
+
 .label {
   margin: 0 0 6px;
   color: var(--muted);

@@ -22,9 +22,11 @@
   const UNHIDE_SAFETY_MS = 4000;
 
   const state = {
-    bytes: null, // raw bytes, reused when the user picks an encoding by hand
+    bytes: null, // raw bytes, reused for manual overrides and for on/off
     hint: '', // Wayback's x-archive-guessed-charset
     result: null, // most recent detection result
+    original: '', // encoding the browser used before the replacement
+    target: '', // encoding to use when on; empty means on/off is meaningless
     applied: false, // whether the document was replaced
     eligible: false, // is this frame a candidate (valid UTF-8 means no)
   };
@@ -71,11 +73,40 @@
   }
 
   /** Replace the whole document with the decoded HTML. */
-  function replaceDocument(html) {
+  function replaceDocument(html, applied) {
     document.open();
     document.write(rewriteDeclarations(html));
     document.close();
-    state.applied = true;
+    state.applied = applied;
+  }
+
+  /**
+   * Turn the conversion on or off.
+   *
+   * Off reproduces the browser's own interpretation (the garbled state) by
+   * decoding the raw bytes with the characterSet from before the replacement.
+   * No re-fetch and no reload needed.
+   * @param {boolean} enabled
+   * @returns {boolean} whether the state could be switched
+   */
+  function setEnabled(enabled) {
+    if (!convertible()) return false;
+    if (enabled === state.applied) return true; // already there
+    const encoding = enabled ? state.target : state.original;
+    replaceDocument(wjpDecode(state.bytes, encoding), enabled);
+    return true;
+  }
+
+  /**
+   * Is on/off meaningful here?
+   *
+   * state.target is only filled in once a replacement has actually happened.
+   * It stays empty for pages where detection failed and for pages where the
+   * browser's interpretation already matched ("no conversion needed"), which
+   * is exactly the set where switching would change nothing.
+   */
+  function convertible() {
+    return Boolean(state.bytes && state.target);
   }
 
   async function fetchBytes() {
@@ -124,6 +155,10 @@
       state.bytes = bytes;
       state.eligible = true;
 
+      // Replacing overwrites characterSet, so record it first. Switching back
+      // off decodes with this.
+      state.original = (document.characterSet || '').toLowerCase() || 'utf-8';
+
       const result = wjpDetect(bytes, state.hint, '');
       state.result = result;
 
@@ -134,10 +169,10 @@
 
       // Leave pages the browser already reads correctly alone.
       // (Pages of that era land here when they do carry a <meta charset>.)
-      const current = (document.characterSet || '').toLowerCase();
-      if (current === result.encoding) return;
+      if (state.original === result.encoding) return;
 
-      replaceDocument(wjpDecode(bytes, result.encoding));
+      state.target = result.encoding;
+      replaceDocument(wjpDecode(bytes, result.encoding), true);
     } finally {
       unhide();
     }
@@ -148,8 +183,21 @@
     if (!state.bytes) return null;
     const result = wjpDetect(state.bytes, state.hint, label);
     state.result = result;
-    replaceDocument(wjpDecode(state.bytes, result.encoding));
+    state.target = result.encoding;
+    replaceDocument(wjpDecode(state.bytes, result.encoding), true);
     return result;
+  }
+
+  /** Current state, as reported to the popup. */
+  function status() {
+    return {
+      encoding: state.result ? state.result.encoding : null,
+      reason: state.result ? state.result.reason : null,
+      applied: state.applied,
+      convertible: convertible(),
+      original: state.original,
+      hint: state.hint,
+    };
   }
 
   api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -159,22 +207,20 @@
     if (!state.eligible) return false;
 
     if (msg.type === 'status') {
-      sendResponse({
-        encoding: state.result ? state.result.encoding : null,
-        reason: state.result ? state.result.reason : null,
-        applied: state.applied,
-        hint: state.hint,
-      });
+      sendResponse(status());
       return false;
     }
 
     if (msg.type === 'force') {
-      const result = applyForced(msg.encoding);
-      sendResponse(
-        result
-          ? { encoding: result.encoding, reason: result.reason, applied: true }
-          : null
-      );
+      sendResponse(applyForced(msg.encoding) ? status() : null);
+      return false;
+    }
+
+    // On/off. Flipping per frame would let frameset pages drift out of sync,
+    // so the desired state is passed in instead (the popup sends to every
+    // frame).
+    if (msg.type === 'setEnabled') {
+      sendResponse(setEnabled(msg.enabled) ? status() : null);
       return false;
     }
 

@@ -138,14 +138,16 @@ Wayback Machine 上の、文字コードが宣言されていないアーカイ�
 
 #### activeTab が必要な理由
 
-入力欄は 1000 文字以内。以下は 549 文字。
+入力欄は 1000 文字以内。以下は英語 698 文字 / 日本語 278 文字。
 
 ```
 This extension has a toolbar popup. When the user clicks the toolbar icon,
 the popup needs to communicate with the tab the user is currently viewing in
 order to (a) show which character encoding was detected for that page and
-why, and (b) apply a different encoding if the user chooses one manually
-from the popup.
+why, (b) apply a different encoding if the user chooses one manually from
+the popup, and (c) turn the conversion off or back on for that page when
+the user toggles it, so they can compare the result with the browser's
+original rendering.
 
 activeTab grants this access only for the tab the user explicitly interacted
 with, and only at the moment of that interaction. The extension does not use
@@ -155,9 +157,10 @@ tab.
 
 ```
 ツールバーのアイコンから開くポップアップが、現在表示中のタブと通信するために
-使用します。用途は 2 つで、(a) そのページで判定された文字コードとその根拠を
+使用します。用途は 3 つで、(a) そのページで判定された文字コードとその根拠を
 表示すること、(b) 利用者がポップアップから別の文字コードを手動で選んだ場合に
-それを適用することです。
+それを適用すること、(c) 利用者がトグルを操作した場合に、そのページの変換を
+解除・再適用して、ブラウザ本来の表示と見比べられるようにすることです。
 
 利用者が明示的に操作したタブに対して、その操作の瞬間だけアクセスします。
 バックグラウンドでタブの内容を読むことも、他のタブにアクセスすることも

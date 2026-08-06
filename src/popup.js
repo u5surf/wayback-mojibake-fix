@@ -22,6 +22,8 @@ const REASONS = {
 
 const statusEl = document.getElementById('status');
 const buttons = [...document.querySelectorAll('button[data-enc]')];
+const toggleEl = document.getElementById('toggle');
+const toggleLabelEl = document.getElementById('toggle-label');
 
 function describe(reason) {
   if (!reason) return '';
@@ -32,9 +34,37 @@ function describe(reason) {
   return REASONS[reason] || reason;
 }
 
+/**
+ * Bring the on/off button in line with the state.
+ * Hidden on pages where switching would not change anything (no conversion
+ * needed, detection failed).
+ */
+function renderToggle(res) {
+  const usable = Boolean(res && res.convertible);
+  toggleEl.hidden = !usable;
+  if (!usable) return;
+  toggleEl.setAttribute('aria-pressed', String(res.applied));
+  toggleLabelEl.textContent = res.applied ? '変換 ON' : '変換 OFF';
+}
+
 function render(res) {
+  renderToggle(res);
+
   if (!res || !res.encoding) {
     statusEl.textContent = 'このページに直すところはありません。';
+    return;
+  }
+  if (res.convertible && !res.applied) {
+    // Just switched off. What the page looks like now is more useful here than
+    // the detection result.
+    statusEl.innerHTML = '';
+    const line = document.createElement('span');
+    line.textContent = 'ブラウザ本来の表示 (未変換)';
+    statusEl.append(line);
+    const sub = document.createElement('span');
+    sub.className = 'reason';
+    sub.textContent = `ON で ${res.encoding} として読み直します`;
+    statusEl.append(sub);
     return;
   }
   const verb = res.applied ? '変換しました' : '変換は不要でした';
@@ -58,6 +88,13 @@ function render(res) {
 function disable(message) {
   statusEl.textContent = message;
   buttons.forEach((b) => (b.disabled = true));
+  toggleEl.hidden = true;
+}
+
+/** Freeze the buttons while a request is in flight, so state cannot drift. */
+function setBusy(busy) {
+  buttons.forEach((b) => (b.disabled = busy));
+  toggleEl.disabled = busy;
 }
 
 async function activeTab() {
@@ -79,15 +116,24 @@ async function init() {
 
   render(await send(tab.id, { type: 'status' }));
 
+  // Send the desired state, not a flip. On frameset pages several frames
+  // respond, and letting each flip on its own would drift them out of sync.
+  toggleEl.addEventListener('click', async () => {
+    const enabled = toggleEl.getAttribute('aria-pressed') !== 'true';
+    setBusy(true);
+    render(await send(tab.id, { type: 'setEnabled', enabled }));
+    setBusy(false);
+  });
+
   for (const button of buttons) {
     button.addEventListener('click', async () => {
-      buttons.forEach((b) => (b.disabled = true));
+      setBusy(true);
       const res = await send(tab.id, {
         type: 'force',
         encoding: button.dataset.enc,
       });
       render(res);
-      buttons.forEach((b) => (b.disabled = false));
+      setBusy(false);
     });
   }
 }
