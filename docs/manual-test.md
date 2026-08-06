@@ -45,6 +45,9 @@ Firefox は `about:debugging` から読み込み/削除で切り替える (プ�
 
 拡張 OFF で化けており、ON で読めるようになること。判定結果は実測値。
 
+より広いサンプル (18 件) と、化けたときの見え方は
+[`mojibake-samples.md`](mojibake-samples.md) にある。
+
 | # | ページ | 判定 | OFF (化けた状態) | ON (読める状態) |
 | --- | --- | --- | --- | --- |
 | 1 | [tbs.co.jp 2000](https://web.archive.org/web/20001212075700/http://www.tbs.co.jp/tengoku/index-j2.html) | `shift_jis` (hint) | `“V‘‚Éˆê”Ô‹ß‚¢’j` | 天国に一番近い男 |
