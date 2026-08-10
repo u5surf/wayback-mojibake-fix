@@ -1,0 +1,101 @@
+name: Publish
+
+# Tag push publishes to the Chrome Web Store. The tag must match the version in
+# manifest.json (v0.1.1 -> 0.1.1); the store rejects a version it already has,
+# and that failure is hard to read, so it is checked up front.
+#
+# Publishing submits for review. It does not go live immediately: an extension
+# with host permissions typically waits one to three weeks.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: タグと manifest のバージョンが一致するか
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(node -p "require('./manifest.json').version")
+          echo "tag=$tag manifest=$manifest"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::タグ ($tag) と manifest.json ($manifest) が食い違っている"
+            exit 1
+          fi
+
+      - name: 判定ロジックのテスト
+        run: node --test test/
+
+      - name: 配布用 zip を作る
+        run: ./package.sh
+
+      - name: Chrome Web Store にアップロードして公開する
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          missing=""
+          [ -n "$EXTENSION_ID" ]  || missing="$missing CWS_EXTENSION_ID"
+          [ -n "$CLIENT_ID" ]     || missing="$missing CWS_CLIENT_ID"
+          [ -n "$CLIENT_SECRET" ] || missing="$missing CWS_CLIENT_SECRET"
+          [ -n "$REFRESH_TOKEN" ] || missing="$missing CWS_REFRESH_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::secret が設定されていない:$missing"
+            exit 1
+          fi
+
+          # The refresh token does not expire, so this is the only auth step.
+          token=$(curl -sS -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d grant_type=refresh_token | jq -r '.access_token // empty')
+          if [ -z "$token" ]; then
+            echo "::error::アクセストークンを取得できなかった (refresh token が失効している可能性)"
+            exit 1
+          fi
+
+          echo "--- upload"
+          upload=$(curl -sS -X PUT \
+            -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" \
+            -T wayback-mojibake-fix.zip \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID?uploadType=media")
+          echo "$upload" | jq .
+
+          state=$(echo "$upload" | jq -r '.uploadState // "UNKNOWN"')
+          if [ "$state" != "SUCCESS" ]; then
+            echo "::error::アップロードに失敗した (uploadState=$state)"
+            exit 1
+          fi
+
+          echo "--- publish"
+          publish=$(curl -sS -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
+          echo "$publish" | jq .
+
+          # OK and ITEM_PENDING_REVIEW are both fine: the submission went
+          # through and is waiting on a human reviewer.
+          if echo "$publish" | jq -e '.status | index("OK") or index("ITEM_PENDING_REVIEW")' >/dev/null; then
+            echo "審査に提出した。公開まで通常 1〜3 週間かかる。"
+          else
+            echo "::error::公開に失敗した"
+            exit 1
+          fi

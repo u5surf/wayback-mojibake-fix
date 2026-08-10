@@ -241,6 +241,68 @@ DOM は使えません。文書が生成された時点でブラウザは既に�
 - データを第三者に販売しない
 - データを信用調査や融資目的に使用しない
 
+### 公開を自動化する
+
+`.github/workflows/publish.yml` が、`v*` のタグ push で zip をアップロードして
+審査に提出する。
+
+**初回だけは手作業。** Chrome Web Store の API は既存アイテムの更新しかできない。
+アイテムの作成・掲載情報・スクリーンショット・権限の正当性説明 (このファイルの
+内容) は、最初にダッシュボードへ手で登録する。$5 の登録料もそこで払う。
+
+#### 必要な secret
+
+リポジトリの `Settings → Secrets and variables → Actions` に 4 つ登録する。
+
+| secret | 取得元 |
+| --- | --- |
+| `CWS_EXTENSION_ID` | 公開後のアイテム URL に含まれる 32 文字 |
+| `CWS_CLIENT_ID` | Google Cloud の OAuth クライアント |
+| `CWS_CLIENT_SECRET` | 同上 |
+| `CWS_REFRESH_TOKEN` | 下記の手順で 1 度だけ取得。失効しない |
+
+#### refresh token の取り方
+
+1. Google Cloud でプロジェクトを作り、**Chrome Web Store API** を有効化する
+2. OAuth 同意画面を作る (外部 / テストのままでよい。自分をテストユーザーに追加)
+3. 認証情報 → OAuth クライアント ID → **デスクトップアプリ**を作成し、
+   クライアント ID とシークレットを控える
+4. 次の URL をブラウザで開いて承認し、表示されるコードを控える
+
+   ```
+   https://accounts.google.com/o/oauth2/auth?response_type=code&scope=https://www.googleapis.com/auth/chromewebstore&client_id=<CLIENT_ID>&redirect_uri=urn:ietf:wg:oauth:2.0:oob
+   ```
+
+5. そのコードを refresh token に交換する
+
+   ```console
+   $ curl -d "client_id=<CLIENT_ID>" -d "client_secret=<CLIENT_SECRET>" \
+          -d "code=<CODE>" -d "grant_type=authorization_code" \
+          -d "redirect_uri=urn:ietf:wg:oauth:2.0:oob" \
+          https://accounts.google.com/o/oauth2/token
+   ```
+
+`redirect_uri` の `oob` は Google が段階的に廃止している方式なので、通らない
+場合は OAuth クライアントの承認済みリダイレクト URI に `http://localhost` を
+足し、`redirect_uri=http://localhost` で同じことをする (ブラウザは接続エラーに
+なるが、URL の `code=` パラメータが取れればよい)。
+
+#### リリース手順
+
+1. `manifest.json` の `version` を上げる
+2. `git tag v0.1.1 && git push origin v0.1.1`
+
+タグと `manifest.json` のバージョンが食い違っていると、ワークフローが最初の
+ステップで止まる。Chrome Web Store は同じバージョンを受け付けず、そのエラーは
+読みにくいので手前で弾いている。
+
+**公開は即時ではない。** API の publish は「審査に提出」までで、ホスト権限を持つ
+この拡張は通常 1〜3 週間かかる。
+
+タグ push の前に人間の承認を挟みたくなったら、ジョブに
+`environment: chrome-web-store` を足して、その environment に必須レビュアーを
+設定する。
+
 ---
 
 ## Firefox Add-ons (AMO)
