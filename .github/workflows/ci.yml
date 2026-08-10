@@ -16,7 +16,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # TextDecoder の Shift_JIS / EUC-JP には full-icu ビルドが要る (公式ビルドは全て該当)
+          # TextDecoder needs a full-icu build for Shift_JIS / EUC-JP
+          # (every official build qualifies)
           node-version: '20'
 
       - name: manifest の JSON を検証
@@ -26,7 +27,7 @@ jobs:
             echo "ok $f"
           done
 
-      # 判定ロジックはブラウザ API しか使わないので Node からそのまま検証できる
+      # Detection only uses browser APIs, so Node can verify it as is
       - name: 判定ロジックのテスト
         run: node --test test/
 
