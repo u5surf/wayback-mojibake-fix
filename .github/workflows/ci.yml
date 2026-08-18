@@ -18,7 +18,7 @@ jobs:
         with:
           # TextDecoder needs a full-icu build for Shift_JIS / EUC-JP
           # (every official build qualifies)
-          node-version: '20'
+          node-version: '22'
 
       - name: manifest の JSON を検証
         run: |
