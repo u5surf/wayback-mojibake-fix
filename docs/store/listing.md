@@ -258,18 +258,24 @@ GitHub Release に `wayback-mojibake-fix-<version>.zip` を添付するだけ。
 
 #### 必要な secret
 
-リポジトリの `Settings → Secrets and variables → Actions` に 3 つ登録する。
+リポジトリの `Settings → Secrets and variables → Actions` に 4 つ登録する。
 
 | secret | 取得元 |
 | --- | --- |
 | `CWS_EXTENSION_ID` | 公開後のアイテム URL に含まれる 32 文字 |
 | `CWS_CLIENT_ID` | Google Cloud の OAuth クライアント (デスクトップアプリ) |
+| `CWS_CLIENT_SECRET` | 同上。作成直後のダイアログでしか表示されない |
 | `CWS_REFRESH_TOKEN` | `refresh-token.sh` で 1 度だけ取得 |
 
-**クライアント シークレットは要らない。** デスクトップアプリの OAuth クライアントは
-公開クライアント扱いで、Google は使えるシークレットを発行しない (作成ダイアログにも
-出てこない)。トークン交換は代わりに PKCE の `code_verifier` で認証し、refresh 時は
-`client_id` と `refresh_token` だけを送る。
+**クライアント シークレットは要る。** デスクトップアプリは公開クライアント扱いで、
+Google のドキュメントも `client_secret` を optional と書いているが、実際には
+省くとトークンエンドポイントが `client_secret is missing` を返す。PKCE の
+`code_verifier` と併用する。
+
+作成直後のダイアログを閉じると二度と表示できないので、その場で控えること
+(無くしたらクライアント一覧からリセットして取り直す)。なお Chrome 拡張機能タイプの
+クライアントにはシークレットが発行されないが、そちらは拡張機能自身が
+`chrome.identity` で API を呼ぶための型で、CI からは使えない。
 
 #### refresh token の取り方
 
@@ -284,11 +290,12 @@ GitHub Release に `wayback-mojibake-fix-<version>.zip` を添付するだけ。
      token は **7 日で失効**し、CI が 1 週間で壊れる。`chromewebstore` スコープは
      機微でも制限付きでもないので、本番にしても Google の審査は要らない
 3. 「クライアント」→「クライアントを作成」→ **デスクトップアプリ**を作り、
-   クライアント ID を控える (シークレットは発行されない)
+   クライアント ID とシークレットを控える (アイテム ID の入力欄が出る
+   「Chrome 拡張機能」は別物なので選ばない)
 4. `refresh-token.sh` を実行し、表示される指示に従う
 
    ```console
-   $ docs/store/refresh-token.sh <CLIENT_ID>
+   $ docs/store/refresh-token.sh <CLIENT_ID> <CLIENT_SECRET>
    ```
 
    PKCE の code_verifier / code_challenge の生成、認可 URL の組み立て、

@@ -1,19 +1,21 @@
 #!/bin/sh
 # Obtains a Chrome Web Store refresh token for CWS_REFRESH_TOKEN.
 #
-# Desktop OAuth clients are public clients: Google issues no usable client
-# secret for them, and the token exchange authenticates with PKCE instead.
-# That is why this asks only for a client ID.
+# A desktop OAuth client does get a client secret, and Google's token endpoint
+# rejects the exchange without it ("client_secret is missing") even though the
+# docs call the parameter optional. PKCE is still used on top of it: the secret
+# ships with the client and is not treated as confidential.
 #
 # Run once. The refresh token that comes out does not expire as long as the
 # OAuth app's publishing status stays "In production".
 set -eu
 
-if [ $# -ne 1 ]; then
-	echo "usage: $0 <CLIENT_ID>" >&2
+if [ $# -ne 2 ]; then
+	echo "usage: $0 <CLIENT_ID> <CLIENT_SECRET>" >&2
 	exit 1
 fi
 client_id=$1
+client_secret=$2
 redirect_uri=http://localhost:8080
 
 # PKCE. The verifier is the secret; the challenge is its SHA-256, base64url
@@ -47,6 +49,7 @@ read -r code
 # The authorization code is single-use and expires within minutes.
 response=$(curl -sS \
 	-d "client_id=$client_id" \
+	-d "client_secret=$client_secret" \
 	-d "code=$code" \
 	-d "code_verifier=$verifier" \
 	-d "grant_type=authorization_code" \

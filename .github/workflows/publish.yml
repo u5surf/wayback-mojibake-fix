@@ -51,6 +51,7 @@ jobs:
         env:
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
@@ -58,21 +59,23 @@ jobs:
           missing=""
           [ -n "$EXTENSION_ID" ]  || missing="$missing CWS_EXTENSION_ID"
           [ -n "$CLIENT_ID" ]     || missing="$missing CWS_CLIENT_ID"
+          [ -n "$CLIENT_SECRET" ] || missing="$missing CWS_CLIENT_SECRET"
           [ -n "$REFRESH_TOKEN" ] || missing="$missing CWS_REFRESH_TOKEN"
           if [ -n "$missing" ]; then
             echo "::error::secret が設定されていない:$missing"
             exit 1
           fi
 
-          # No client secret here: a desktop OAuth client is a public client,
-          # and Google does not issue a usable secret for one. The refresh
-          # request takes client_id, refresh_token and grant_type only.
+          # The client secret is required even though a desktop OAuth client is
+          # a public client and Google's docs call the parameter optional: the
+          # token endpoint answers "client_secret is missing" without it.
           #
           # The refresh token lasts as long as the OAuth app's publishing
           # status stays "In production". Under "Testing" it expires after
           # seven days, which quietly breaks this job a week later.
           token=$(curl -sS -X POST https://oauth2.googleapis.com/token \
             -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
             -d "refresh_token=$REFRESH_TOKEN" \
             -d grant_type=refresh_token | jq -r '.access_token // empty')
           if [ -z "$token" ]; then
