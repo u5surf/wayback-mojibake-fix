@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: 判定ロジックのテスト
-        run: node --test test/
+        run: node --test test/*.test.js
 
       - name: 配布用 zip を作る
         run: ./package.sh

@@ -29,7 +29,7 @@ jobs:
 
       # Detection only uses browser APIs, so Node can verify it as is
       - name: 判定ロジックのテスト
-        run: node --test test/
+        run: node --test test/*.test.js
 
       - name: 配布用 zip が作れることを確認
         run: ./package.sh

@@ -152,7 +152,7 @@ frameset のページでは複数のフレームが介入対象になるため�
 ### テスト
 
 ```console
-$ node --test test/
+$ node --test test/*.test.js
 ```
 
 判定ロジックはブラウザ API (`TextDecoder`) しか使わないので、Node からその
