@@ -243,8 +243,14 @@ DOM は使えません。文書が生成された時点でブラウザは既に�
 
 ### 公開を自動化する
 
-`.github/workflows/publish.yml` が、`v*` のタグ push で zip をアップロードして
-審査に提出する。
+`.github/workflows/publish.yml` が zip をアップロードして審査に提出する。
+**タグ push では動かない。** Actions タブから、対象のタグを選んで手で実行する
+(`Run workflow` の Branch/Tag でタグを選ぶ。ブランチのまま実行するとエラーで
+止まる)。
+
+`v*` のタグ push で走るのは `.github/workflows/release.yml` の方で、そちらは
+GitHub Release に `wayback-mojibake-fix-<version>.zip` を添付するだけ。ストアには
+何も送らない。
 
 **初回だけは手作業。** Chrome Web Store の API は既存アイテムの更新しかできない。
 アイテムの作成・掲載情報・スクリーンショット・権限の正当性説明 (このファイルの

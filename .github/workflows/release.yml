@@ -1,0 +1,65 @@
+name: Release
+
+# Tag push builds the distribution package and attaches it to a GitHub Release.
+# The tag must match the version in manifest.json (v0.1.1 -> 0.1.1).
+#
+# This does not touch the Chrome Web Store. Store submission lives in
+# publish.yml and is run by hand.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: タグと manifest のバージョンが一致するか
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(node -p "require('./manifest.json').version")
+          echo "tag=$tag manifest=$manifest"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::タグ ($tag) と manifest.json ($manifest) が食い違っている"
+            exit 1
+          fi
+
+      - name: 判定ロジックのテスト
+        run: node --test test/
+
+      - name: 配布用 zip を作る
+        run: ./package.sh
+
+      - name: バージョン入りのファイル名にする
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          # Copy, not rename: the download keeps the version in its name while
+          # the fixed name stays where package.sh and publish.yml expect it.
+          cp wayback-mojibake-fix.zip "wayback-mojibake-fix-$v.zip"
+          ls -l "wayback-mojibake-fix-$v.zip"
+
+      - name: GitHub Release に添付する
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          asset="wayback-mojibake-fix-${tag#v}.zip"
+
+          # Re-running the same tag (a fixed workflow, a re-pushed tag) should
+          # refresh the asset rather than fail on an existing release.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag は既にある。添付ファイルを差し替える。"
+            gh release upload "$tag" "$asset" --clobber
+          else
+            gh release create "$tag" "$asset" --title "$tag" --generate-notes
+          fi
