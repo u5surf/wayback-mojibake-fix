@@ -252,40 +252,57 @@ DOM は使えません。文書が生成された時点でブラウザは既に�
 
 #### 必要な secret
 
-リポジトリの `Settings → Secrets and variables → Actions` に 4 つ登録する。
+リポジトリの `Settings → Secrets and variables → Actions` に 3 つ登録する。
 
 | secret | 取得元 |
 | --- | --- |
 | `CWS_EXTENSION_ID` | 公開後のアイテム URL に含まれる 32 文字 |
-| `CWS_CLIENT_ID` | Google Cloud の OAuth クライアント |
-| `CWS_CLIENT_SECRET` | 同上 |
-| `CWS_REFRESH_TOKEN` | 下記の手順で 1 度だけ取得。失効しない |
+| `CWS_CLIENT_ID` | Google Cloud の OAuth クライアント (デスクトップアプリ) |
+| `CWS_REFRESH_TOKEN` | `refresh-token.sh` で 1 度だけ取得 |
+
+**クライアント シークレットは要らない。** デスクトップアプリの OAuth クライアントは
+公開クライアント扱いで、Google は使えるシークレットを発行しない (作成ダイアログにも
+出てこない)。トークン交換は代わりに PKCE の `code_verifier` で認証し、refresh 時は
+`client_id` と `refresh_token` だけを送る。
 
 #### refresh token の取り方
 
 1. Google Cloud でプロジェクトを作り、**Chrome Web Store API** を有効化する
-2. OAuth 同意画面を作る (外部 / テストのままでよい。自分をテストユーザーに追加)
-3. 認証情報 → OAuth クライアント ID → **デスクトップアプリ**を作成し、
-   クライアント ID とシークレットを控える
-4. 次の URL をブラウザで開いて承認し、表示されるコードを控える
-
-   ```
-   https://accounts.google.com/o/oauth2/auth?response_type=code&scope=https://www.googleapis.com/auth/chromewebstore&client_id=<CLIENT_ID>&redirect_uri=urn:ietf:wg:oauth:2.0:oob
-   ```
-
-5. そのコードを refresh token に交換する
+2. OAuth 同意画面を作る
+   - ユーザーの種類は**外部** (内部は Workspace 組織のアカウントでしか選べない)
+   - アプリ名・サポートメール・連絡先だけ埋める。ロゴとドメインは**空のまま**に
+     する。埋めるとブランド確認が要る
+   - スコープは**追加しない**。認可 URL の `scope=` で直接指定する
+   - **テストユーザーに自分のアカウントを追加する**
+   - **公開ステータスを「本番」にする。**「テスト」のままで発行した refresh
+     token は **7 日で失効**し、CI が 1 週間で壊れる。`chromewebstore` スコープは
+     機微でも制限付きでもないので、本番にしても Google の審査は要らない
+3. 「クライアント」→「クライアントを作成」→ **デスクトップアプリ**を作り、
+   クライアント ID を控える (シークレットは発行されない)
+4. `refresh-token.sh` を実行し、表示される指示に従う
 
    ```console
-   $ curl -d "client_id=<CLIENT_ID>" -d "client_secret=<CLIENT_SECRET>" \
-          -d "code=<CODE>" -d "grant_type=authorization_code" \
-          -d "redirect_uri=urn:ietf:wg:oauth:2.0:oob" \
-          https://accounts.google.com/o/oauth2/token
+   $ docs/store/refresh-token.sh <CLIENT_ID>
    ```
 
-`redirect_uri` の `oob` は Google が段階的に廃止している方式なので、通らない
-場合は OAuth クライアントの承認済みリダイレクト URI に `http://localhost` を
-足し、`redirect_uri=http://localhost` で同じことをする (ブラウザは接続エラーに
-なるが、URL の `code=` パラメータが取れればよい)。
+   PKCE の code_verifier / code_challenge の生成、認可 URL の組み立て、
+   認可コードの交換までをまとめてある。手でやると `access_type=offline` の
+   付け忘れ (これが無いと refresh token が返らない) や、verifier と challenge
+   の対応ずれで詰まりやすい。
+
+認可画面では「このアプリは Google で確認されていません」と警告が出る。自分で
+作ったアプリなので正常。「詳細」→「(アプリ名) に移動」で進む。
+
+承認後、ブラウザは `http://localhost:8080/?code=...` への接続に失敗する。待ち受け
+が無いので正常で、要るのはアドレスバーの `code=` の値。
+
+`redirect_uri` に `urn:ietf:wg:oauth:2.0:oob` は使えない。Google が 2022 年に
+廃止しており、いま作成したクライアントでは拒否される。デスクトップアプリ型の
+クライアントはループバック (`http://localhost:<port>`) を事前登録なしで使える。
+
+refresh token が失効したらワークフローは「アクセストークンを取得できなかった」
+で止まる。手順 4〜5 をやり直して secret を入れ替える。公開ステータスが「本番」に
+なっていれば、通常これは起きない。
 
 #### リリース手順
 
